@@ -1,6 +1,6 @@
 from fastapi.testclient import TestClient
 
-from app import app, reset_database, SESSIONS
+from app import SESSIONS, app, reset_database
 
 client = TestClient(app)
 
@@ -62,3 +62,85 @@ def test_debug_data_is_only_on_vulnerable_endpoint():
     secure = client.get("/secure/status")
     assert secure.status_code == 200
     assert "demo_internal_key" not in secure.json()
+
+
+# ---------------------------------------------------------------------------
+# Advanced authorization / business-logic case study
+# ---------------------------------------------------------------------------
+
+
+def test_employee_cross_department_object_access():
+    session_id = login("alice", "alice123!")
+    cookies = {"session_id": session_id}
+
+    vulnerable = client.get("/api/v2/vuln/expenses/203", cookies=cookies)
+    assert vulnerable.status_code == 200
+    assert vulnerable.json()["expense"]["department"] == "B"
+
+    secure = client.get("/api/v2/secure/expenses/203", cookies=cookies)
+    assert secure.status_code == 403
+
+
+def test_employee_can_skip_workflow_only_in_vulnerable_endpoint():
+    session_id = login("alice", "alice123!")
+    cookies = {"session_id": session_id}
+
+    vulnerable = client.post(
+        "/api/v2/vuln/expenses/201/transition",
+        json={"status": "approved"},
+        cookies=cookies,
+    )
+    assert vulnerable.status_code == 200
+    assert vulnerable.json()["expense"]["status"] == "approved"
+
+    reset_database()
+    SESSIONS.clear()
+    session_id = login("alice", "alice123!")
+    cookies = {"session_id": session_id}
+
+    secure = client.post("/api/v2/secure/expenses/201/submit", cookies=cookies)
+    assert secure.status_code == 200
+    assert secure.json()["expense"]["status"] == "submitted"
+
+
+def test_manager_cross_department_approval_is_blocked_in_secure_flow():
+    session_id = login("manager_a", "managerA123!")
+    cookies = {"session_id": session_id}
+
+    vulnerable = client.post("/api/v2/vuln/expenses/203/approve", cookies=cookies)
+    assert vulnerable.status_code == 200
+    assert vulnerable.json()["expense"]["status"] == "approved"
+
+    reset_database()
+    SESSIONS.clear()
+    session_id = login("manager_a", "managerA123!")
+    cookies = {"session_id": session_id}
+
+    secure = client.post("/api/v2/secure/expenses/203/approve", cookies=cookies)
+    assert secure.status_code == 403
+
+
+def test_manager_self_approval_is_blocked_in_secure_flow():
+    session_id = login("manager_a", "managerA123!")
+    cookies = {"session_id": session_id}
+
+    vulnerable = client.post("/api/v2/vuln/expenses/204/approve", cookies=cookies)
+    assert vulnerable.status_code == 200
+    assert vulnerable.json()["expense"]["status"] == "approved"
+
+    reset_database()
+    SESSIONS.clear()
+    session_id = login("manager_a", "managerA123!")
+    cookies = {"session_id": session_id}
+
+    secure = client.post("/api/v2/secure/expenses/204/approve", cookies=cookies)
+    assert secure.status_code == 403
+
+
+def test_same_department_manager_can_approve_submitted_expense():
+    session_id = login("manager_a", "managerA123!")
+    cookies = {"session_id": session_id}
+
+    secure = client.post("/api/v2/secure/expenses/202/approve", cookies=cookies)
+    assert secure.status_code == 200
+    assert secure.json()["expense"]["status"] == "approved"
