@@ -173,15 +173,19 @@
 
 ## Portfolio
 
-실무에서 사용해 온 진단 방식과 분석 역량을 공개 가능한 테스트 환경에서 재현해 정리하고 있습니다.
+실무에서 사용해 온 분석 방식과 판단 기준을 중심으로 기술보안 포트폴리오를 정리하고 있습니다.
 
-- [Web / API Security Assessment](./portfolio/01-web-api-security.md)
-- [Mobile Security & Reversing](./portfolio/02-mobile-reversing.md)
-- [C/S Security Analysis](./portfolio/03-cs-security-analysis.md)
-- [AI Chatbot Security](./portfolio/04-ai-chatbot-security.md)
-- [Vulnerability Management](./portfolio/05-vulnerability-management.md)
+- [Security Assessment Methodology](./portfolio/01-security-assessment-methodology.md)
+- [Authorization & Business Logic Assessment](./portfolio/02-authz-business-logic-case.md)
+- [Mobile Security & Reversing](./portfolio/03-mobile-reversing-frida.md)
+- [C/S · .NET Application Security Analysis](./portfolio/04-cs-dotnet-analysis.md)
+- [AI Chatbot Security Assessment](./portfolio/05-ai-prompt-injection.md)
+- [Vulnerability Management](./portfolio/06-vulnerability-management.md)
+- [Security Project Leadership](./portfolio/07-project-leadership.md)
 
-> 고객사 시스템과 실제 취약점 증적은 공개하지 않으며, 모든 기술 증적은 별도 테스트 환경에서 재현합니다.
+> 고객사 증적은 공개하지 않으며, 필요한 기술 증적은 별도의 로컬 Security Lab에서 재현합니다.
+
+---
 
 ## 자격 및 학력
 
