@@ -5,8 +5,9 @@ import secrets
 import sqlite3
 from pathlib import Path
 
-from fastapi import Cookie, FastAPI, Form, Header, HTTPException, Request
+from fastapi import Cookie, FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 APP_DIR = Path(__file__).resolve().parent
 DB_PATH = APP_DIR / "security_lab.db"
@@ -14,10 +15,14 @@ DB_PATH = APP_DIR / "security_lab.db"
 app = FastAPI(
     title="Security Lab - Web/API",
     description="Intentionally vulnerable local lab for security assessment practice.",
-    version="0.1.0",
+    version="0.2.0",
 )
 
 SESSIONS: dict[str, dict] = {}
+
+
+class StatusChange(BaseModel):
+    status: str
 
 
 def db() -> sqlite3.Connection:
@@ -30,14 +35,16 @@ def reset_database() -> None:
     conn = db()
     conn.executescript(
         """
-        DROP TABLE IF EXISTS users;
+        DROP TABLE IF EXISTS expenses;
         DROP TABLE IF EXISTS orders;
+        DROP TABLE IF EXISTS users;
 
         CREATE TABLE users (
             id INTEGER PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             password TEXT NOT NULL,
             role TEXT NOT NULL,
+            department TEXT NOT NULL,
             email TEXT NOT NULL
         );
 
@@ -48,14 +55,26 @@ def reset_database() -> None:
             price INTEGER NOT NULL,
             note TEXT NOT NULL
         );
+
+        CREATE TABLE expenses (
+            id INTEGER PRIMARY KEY,
+            owner_id INTEGER NOT NULL,
+            department TEXT NOT NULL,
+            title TEXT NOT NULL,
+            amount INTEGER NOT NULL,
+            status TEXT NOT NULL
+        );
         """
     )
     conn.executemany(
-        "INSERT INTO users(id, username, password, role, email) VALUES (?, ?, ?, ?, ?)",
+        "INSERT INTO users(id, username, password, role, department, email) VALUES (?, ?, ?, ?, ?, ?)",
         [
-            (1, "admin", "admin123!", "admin", "admin@lab.local"),
-            (2, "alice", "alice123!", "user", "alice@lab.local"),
-            (3, "bob", "bob123!", "user", "bob@lab.local"),
+            (1, "admin", "admin123!", "admin", "HQ", "admin@lab.local"),
+            (2, "alice", "alice123!", "employee", "A", "alice@lab.local"),
+            (3, "bob", "bob123!", "employee", "A", "bob@lab.local"),
+            (4, "manager_a", "managerA123!", "manager", "A", "manager-a@lab.local"),
+            (5, "manager_b", "managerB123!", "manager", "B", "manager-b@lab.local"),
+            (6, "charlie", "charlie123!", "employee", "B", "charlie@lab.local"),
         ],
     )
     conn.executemany(
@@ -63,6 +82,15 @@ def reset_database() -> None:
         [
             (101, 2, "Security Book", 32000, "alice-private-note"),
             (102, 3, "USB Adapter", 19000, "bob-private-note"),
+        ],
+    )
+    conn.executemany(
+        "INSERT INTO expenses(id, owner_id, department, title, amount, status) VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            (201, 2, "A", "Cloud test license", 120000, "draft"),
+            (202, 3, "A", "Security appliance rental", 890000, "submitted"),
+            (203, 6, "B", "Training budget", 350000, "submitted"),
+            (204, 4, "A", "Team tool renewal", 500000, "submitted"),
         ],
     )
     conn.commit()
@@ -117,47 +145,39 @@ def index() -> HTMLResponse:
 </div>
 
 <div class="card">
+<h2>Advanced Case Study · 비용 승인 Workflow</h2>
+<p>단순 취약점 재현이 아니라 사용자·부서·역할·객체 소유권·상태 전이를 함께 검증하도록 구성했습니다.</p>
+<ul>
+<li>수평 권한: 다른 사용자의 비용 객체 접근</li>
+<li>범위 권한: 다른 부서 Manager의 승인</li>
+<li>업무 로직: Draft → Approved 단계 건너뛰기</li>
+<li>Separation of Duties: 자신의 요청을 스스로 승인</li>
+</ul>
+<p><a href="/docs">Swagger API</a> · 저장소의 CASE_STUDY_AUTHZ.md에서 테스트 매트릭스 확인</p>
+</div>
+
+<div class="card">
 <h2>테스트 계정</h2>
 <ul>
-<li>admin / admin123!</li>
-<li>alice / alice123!</li>
-<li>bob / bob123!</li>
+<li>admin / admin123! · HQ</li>
+<li>alice / alice123! · Employee / A</li>
+<li>bob / bob123! · Employee / A</li>
+<li>manager_a / managerA123! · Manager / A</li>
+<li>manager_b / managerB123! · Manager / B</li>
+<li>charlie / charlie123! · Employee / B</li>
 </ul>
 <a href="/login">로그인</a>
 </div>
 
 <div class="card">
-<h2>SQL Injection</h2>
+<h2>기본 Web/API 진단 항목</h2>
 <ul>
-<li><a href="/vuln/search?q=alice">취약 버전</a></li>
-<li><a href="/secure/search?q=alice">개선 버전</a></li>
-</ul>
-</div>
-
-<div class="card">
-<h2>Reflected XSS</h2>
-<ul>
-<li><a href="/vuln/xss?q=hello">취약 버전</a></li>
-<li><a href="/secure/xss?q=hello">개선 버전</a></li>
-</ul>
-</div>
-
-<div class="card">
-<h2>접근통제 / IDOR</h2>
-<p>로그인 후 Alice와 Bob 계정으로 사용자/주문 리소스 접근 차이를 비교합니다.</p>
-<ul>
-<li><code>/vuln/profile/2</code>, <code>/vuln/profile/3</code></li>
-<li><code>/secure/profile/2</code>, <code>/secure/profile/3</code></li>
-<li><code>/api/vuln/orders/101</code>, <code>/api/vuln/orders/102</code></li>
-<li><code>/api/secure/orders/101</code>, <code>/api/secure/orders/102</code></li>
-</ul>
-</div>
-
-<div class="card">
-<h2>중요정보 노출</h2>
-<ul>
-<li><a href="/vuln/debug">취약 Debug Endpoint</a></li>
-<li><a href="/secure/status">개선된 상태 Endpoint</a></li>
+<li>SQL Injection: <code>/vuln/search</code> / <code>/secure/search</code></li>
+<li>Reflected XSS: <code>/vuln/xss</code> / <code>/secure/xss</code></li>
+<li>IDOR: <code>/vuln/profile/{id}</code> / <code>/secure/profile/{id}</code></li>
+<li>API BOLA: <code>/api/vuln/orders/{id}</code> / <code>/api/secure/orders/{id}</code></li>
+<li>중요정보 노출: <code>/vuln/debug</code> / <code>/secure/status</code></li>
+<li>CSRF: <code>/vuln/change-email</code> / <code>/secure/change-email</code></li>
 </ul>
 </div>
 """,
@@ -183,7 +203,7 @@ def login_form() -> HTMLResponse:
 def login(username: str = Form(...), password: str = Form(...)):
     conn = db()
     row = conn.execute(
-        "SELECT id, username, role, email FROM users WHERE username = ? AND password = ?",
+        "SELECT id, username, role, department, email FROM users WHERE username = ? AND password = ?",
         (username, password),
     ).fetchone()
     conn.close()
@@ -196,6 +216,7 @@ def login(username: str = Form(...), password: str = Form(...)):
         "id": row["id"],
         "username": row["username"],
         "role": row["role"],
+        "department": row["department"],
         "email": row["email"],
         "csrf": csrf_token,
     }
@@ -222,6 +243,7 @@ def me(session_id: str | None = Cookie(default=None)) -> HTMLResponse:
 <div class="card">
 <p><strong>User:</strong> {html.escape(user["username"])}</p>
 <p><strong>Role:</strong> {html.escape(user["role"])}</p>
+<p><strong>Department:</strong> {html.escape(user["department"])}</p>
 <p><strong>User ID:</strong> {user["id"]}</p>
 </div>
 <p><a href="/secure/profile/{user['id']}">내 프로필</a></p>
@@ -234,7 +256,7 @@ def me(session_id: str | None = Cookie(default=None)) -> HTMLResponse:
 def vulnerable_search(q: str = ""):
     conn = db()
     # INTENTIONALLY VULNERABLE: SQL query string interpolation.
-    sql = f"SELECT id, username, role, email FROM users WHERE username LIKE '%{q}%'"
+    sql = f"SELECT id, username, role, department, email FROM users WHERE username LIKE '%{q}%'"
     try:
         rows = conn.execute(sql).fetchall()
         result = [dict(row) for row in rows]
@@ -252,7 +274,7 @@ def vulnerable_search(q: str = ""):
 def secure_search(q: str = ""):
     conn = db()
     rows = conn.execute(
-        "SELECT id, username, role, email FROM users WHERE username LIKE ?",
+        "SELECT id, username, role, department, email FROM users WHERE username LIKE ?",
         (f"%{q}%",),
     ).fetchall()
     conn.close()
@@ -261,7 +283,6 @@ def secure_search(q: str = ""):
 
 @app.get("/vuln/xss", response_class=HTMLResponse)
 def vulnerable_xss(q: str = "") -> HTMLResponse:
-    # INTENTIONALLY VULNERABLE: unescaped user-controlled value.
     return HTMLResponse(
         f"""<h1>Vulnerable Reflected XSS</h1>
 <p>검색어: {q}</p>
@@ -283,12 +304,11 @@ def vulnerable_profile(user_id: int, session_id: str | None = Cookie(default=Non
     current_user(session_id)
     conn = db()
     row = conn.execute(
-        "SELECT id, username, role, email FROM users WHERE id = ?", (user_id,)
+        "SELECT id, username, role, department, email FROM users WHERE id = ?", (user_id,)
     ).fetchone()
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="User not found")
-    # INTENTIONALLY VULNERABLE: any logged-in user can read any profile.
     return {"mode": "vulnerable", "profile": dict(row)}
 
 
@@ -299,7 +319,7 @@ def secure_profile(user_id: int, session_id: str | None = Cookie(default=None)):
         raise HTTPException(status_code=403, detail="Forbidden")
     conn = db()
     row = conn.execute(
-        "SELECT id, username, role, email FROM users WHERE id = ?", (user_id,)
+        "SELECT id, username, role, department, email FROM users WHERE id = ?", (user_id,)
     ).fetchone()
     conn.close()
     if not row:
@@ -315,7 +335,6 @@ def vulnerable_order(order_id: int, session_id: str | None = Cookie(default=None
     conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="Order not found")
-    # INTENTIONALLY VULNERABLE: no ownership check.
     return {"mode": "vulnerable", "order": dict(row)}
 
 
@@ -334,7 +353,6 @@ def secure_order(order_id: int, session_id: str | None = Cookie(default=None)):
 
 @app.get("/vuln/debug")
 def vulnerable_debug():
-    # INTENTIONALLY VULNERABLE: debug details and a fake secret are exposed.
     return {
         "debug": True,
         "database": str(DB_PATH),
@@ -360,7 +378,6 @@ def vulnerable_change_email(
     conn.commit()
     conn.close()
     SESSIONS[session_id]["email"] = email
-    # INTENTIONALLY VULNERABLE: no CSRF token validation.
     return {"mode": "vulnerable", "updated": True, "email": email}
 
 
@@ -394,3 +411,162 @@ def secure_change_email_form(session_id: str | None = Cookie(default=None)):
 </form>
 """,
     )
+
+
+# ---------------------------------------------------------------------------
+# Advanced Case Study: Expense Approval Workflow
+# ---------------------------------------------------------------------------
+
+
+def get_expense(expense_id: int) -> sqlite3.Row:
+    conn = db()
+    row = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    conn.close()
+    if not row:
+        raise HTTPException(status_code=404, detail="Expense not found")
+    return row
+
+
+def update_expense_status(expense_id: int, status: str) -> dict:
+    conn = db()
+    conn.execute("UPDATE expenses SET status = ? WHERE id = ?", (status, expense_id))
+    conn.commit()
+    row = conn.execute("SELECT * FROM expenses WHERE id = ?", (expense_id,)).fetchone()
+    conn.close()
+    return dict(row)
+
+
+@app.get("/api/v2/vuln/expenses")
+def vulnerable_expense_list(session_id: str | None = Cookie(default=None)):
+    current_user(session_id)
+    conn = db()
+    rows = conn.execute("SELECT * FROM expenses ORDER BY id").fetchall()
+    conn.close()
+    # INTENTIONALLY VULNERABLE: all authenticated users see all departments.
+    return {"mode": "vulnerable", "results": [dict(row) for row in rows]}
+
+
+@app.get("/api/v2/secure/expenses")
+def secure_expense_list(session_id: str | None = Cookie(default=None)):
+    user = current_user(session_id)
+    conn = db()
+    if user["role"] == "admin":
+        rows = conn.execute("SELECT * FROM expenses ORDER BY id").fetchall()
+    elif user["role"] == "manager":
+        rows = conn.execute(
+            "SELECT * FROM expenses WHERE department = ? ORDER BY id",
+            (user["department"],),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM expenses WHERE owner_id = ? ORDER BY id",
+            (user["id"],),
+        ).fetchall()
+    conn.close()
+    return {"mode": "secure", "results": [dict(row) for row in rows]}
+
+
+@app.get("/api/v2/vuln/expenses/{expense_id}")
+def vulnerable_expense_detail(
+    expense_id: int,
+    session_id: str | None = Cookie(default=None),
+):
+    current_user(session_id)
+    # INTENTIONALLY VULNERABLE: authentication only; no object/department authorization.
+    return {"mode": "vulnerable", "expense": dict(get_expense(expense_id))}
+
+
+@app.get("/api/v2/secure/expenses/{expense_id}")
+def secure_expense_detail(
+    expense_id: int,
+    session_id: str | None = Cookie(default=None),
+):
+    user = current_user(session_id)
+    expense = get_expense(expense_id)
+
+    allowed = (
+        user["role"] == "admin"
+        or expense["owner_id"] == user["id"]
+        or (user["role"] == "manager" and expense["department"] == user["department"])
+    )
+    if not allowed:
+        raise HTTPException(status_code=403, detail="Forbidden")
+
+    return {"mode": "secure", "expense": dict(expense)}
+
+
+@app.post("/api/v2/vuln/expenses/{expense_id}/transition")
+def vulnerable_expense_transition(
+    expense_id: int,
+    change: StatusChange,
+    session_id: str | None = Cookie(default=None),
+):
+    current_user(session_id)
+    get_expense(expense_id)
+
+    if change.status not in {"draft", "submitted", "approved", "rejected"}:
+        raise HTTPException(status_code=400, detail="Unsupported status")
+
+    # INTENTIONALLY VULNERABLE:
+    # - trusts a client-supplied status
+    # - does not enforce state transitions
+    # - does not enforce role, department or separation of duties
+    updated = update_expense_status(expense_id, change.status)
+    return {"mode": "vulnerable", "expense": updated}
+
+
+@app.post("/api/v2/secure/expenses/{expense_id}/submit")
+def secure_expense_submit(
+    expense_id: int,
+    session_id: str | None = Cookie(default=None),
+):
+    user = current_user(session_id)
+    expense = get_expense(expense_id)
+
+    if expense["owner_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the owner can submit")
+    if expense["status"] != "draft":
+        raise HTTPException(status_code=409, detail="Only draft expenses can be submitted")
+
+    updated = update_expense_status(expense_id, "submitted")
+    return {"mode": "secure", "expense": updated}
+
+
+@app.post("/api/v2/vuln/expenses/{expense_id}/approve")
+def vulnerable_expense_approve(
+    expense_id: int,
+    session_id: str | None = Cookie(default=None),
+):
+    user = current_user(session_id)
+    expense = get_expense(expense_id)
+
+    if user["role"] != "manager":
+        raise HTTPException(status_code=403, detail="Manager role required")
+
+    # INTENTIONALLY VULNERABLE:
+    # - manager role is checked, but department scope is ignored
+    # - a manager can approve their own request
+    # - current workflow state is not checked
+    updated = update_expense_status(expense_id, "approved")
+    return {"mode": "vulnerable", "expense": updated}
+
+
+@app.post("/api/v2/secure/expenses/{expense_id}/approve")
+def secure_expense_approve(
+    expense_id: int,
+    session_id: str | None = Cookie(default=None),
+):
+    user = current_user(session_id)
+    expense = get_expense(expense_id)
+
+    if user["role"] != "manager":
+        raise HTTPException(status_code=403, detail="Manager role required")
+    if expense["department"] != user["department"]:
+        raise HTTPException(status_code=403, detail="Department scope violation")
+    if expense["owner_id"] == user["id"]:
+        raise HTTPException(status_code=403, detail="Self approval is not allowed")
+    if expense["status"] != "submitted":
+        raise HTTPException(status_code=409, detail="Only submitted expenses can be approved")
+
+    updated = update_expense_status(expense_id, "approved")
+    return {"mode": "secure", "expense": updated}
