@@ -159,6 +159,20 @@
 
 ---
 
+---
+
+## Portfolio
+
+실무에서 사용해 온 진단 방식과 분석 역량을 공개 가능한 테스트 환경에서 재현해 정리하고 있습니다.
+
+- [Web / API Security Assessment](./portfolio/01-web-api-security.md)
+- [Mobile Security & Reversing](./portfolio/02-mobile-reversing.md)
+- [C/S Security Analysis](./portfolio/03-cs-security-analysis.md)
+- [AI Chatbot Security](./portfolio/04-ai-chatbot-security.md)
+- [Vulnerability Management](./portfolio/05-vulnerability-management.md)
+
+> 고객사 시스템과 실제 취약점 증적은 공개하지 않으며, 모든 기술 증적은 별도 테스트 환경에서 재현합니다.
+
 ## 자격 및 학력
 
 - **정보보안기사**
