@@ -161,6 +161,16 @@
 
 ---
 
+## Security Lab
+
+공개 가능한 환경에서 실제 진단 과정을 재현하기 위해 로컬 전용 테스트 환경을 구성하고 있습니다.
+
+- [Web / API Security Lab](./security-lab/web-api/README.md) — SQL Injection, XSS, IDOR/BOLA, CSRF, 중요정보 노출의 취약/개선 구현 비교
+
+> 의도적으로 취약한 기능이 포함되어 있어 로컬 환경에서만 사용합니다.
+
+---
+
 ## Portfolio
 
 실무에서 사용해 온 진단 방식과 분석 역량을 공개 가능한 테스트 환경에서 재현해 정리하고 있습니다.
