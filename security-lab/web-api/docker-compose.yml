@@ -1,0 +1,9 @@
+services:
+  web-api-lab:
+    build: .
+    container_name: security-web-api-lab
+    ports:
+      - "127.0.0.1:8001:8000"
+    environment:
+      - LAB_ONLY=true
+    restart: "no"
